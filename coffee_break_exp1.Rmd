@@ -1,0 +1,158 @@
+---
+title: "Coffee Break Experiment 1"
+author: "Clare Cruz"
+date: "9/19/2021"
+output: pdf_document
+---
+
+# Introduction
+
+When consuming today's news, it is rare to find an article that is not filled with dismal facts and unfortunate breaking news. But the natural question to this observation is to wonder if all news is depressing or if the popular stories are the only dismal ones. To begin to answer this, this small study will investigate the distribution of sentiment in the news by answering the following questions. The aim of these questions is to look at the sentiment both within the sample news texts and between other texts. 
+
+- Are there more negatively associated words than positive ones in sample news data? 
+- Do the negatively associated words come up more often in the news than in other texts? Is the difference meaningful?
+
+# Data
+
+The data come from a random sample from the Corpus of Contemporary American English. The sub-sample is balanced for text-type and year, with 400 texts total and 50 texts for each of the 8 text types. This sample is particularly helpful since it provides other text-types for the study to compare sentiment compositions against the news text. Tokens are defined as lower cased, non-numeric texts that are surrounded by spaces without punctuation. Common compound expressions are also considered as tokens. There are a total of 1,000,887 token in the sample corpus, with 119029 tokens in the news categories. 
+
+```{r setup, message = FALSE, error=FALSE, warning=FALSE, echo = FALSE}
+library(cmu.textstat)
+library(tidyverse)
+library(quanteda)
+library(quanteda.textstats)
+library(qdapDictionaries)
+```
+
+```{r data_prep, message = FALSE, error=FALSE, echo = FALSE}
+## Pre-process the data & create a corpus
+
+sc <- sample_corpus %>%
+  mutate(text = preprocess_text(text)) %>%
+  corpus()
+```
+
+```{r extract_metadata, echo = FALSE}
+## Extract meta-data from file names
+
+doc_categories <- sample_corpus %>%
+  dplyr::select(doc_id) %>%
+  mutate(doc_id = str_extract(doc_id, "^[a-z]+")) %>%
+  rename(text_type = doc_id)
+```
+
+```{r assign_metadata, echo = FALSE}
+## Assign the meta-data to the corpus
+
+docvars(sc) <- doc_categories
+#doc_categories
+```
+
+```{r, echo = FALSE}
+## Create a **dfm**
+
+sc_dfm <- sc %>%
+  tokens(what="fastestword", remove_numbers=TRUE) %>%
+  tokens_compound(pattern = phrase(multiword_expressions)) %>%
+  dfm()
+
+#sc_dfm
+```
+
+```{r, echo = FALSE}
+corpus_comp <- ntoken(sc_dfm) %>% 
+  data.frame(Tokens = .) %>%
+  rownames_to_column("Text_Type") %>%
+  mutate(Text_Type = str_extract(Text_Type, "^[a-z]+")) %>%
+  group_by(Text_Type) %>%
+  summarize(Texts = n(),
+    Tokens = sum(Tokens)) %>%
+  mutate(Text_Type = c("Academic", "Blog", "Fiction", "Magazine", "News", "Spoken", "Television/Movies", "Web")) %>%
+  rename("Text-Type" = Text_Type) %>%
+  janitor::adorn_totals()
+```
+
+```{r echo=FALSE}
+kableExtra::kbl(corpus_comp, caption = "Composition of the sample corpus.", booktabs = T, linesep = "") %>%
+  kableExtra::kable_styling(latex_options = "HOLD_position") %>%
+  kableExtra::kable_classic() %>%
+  kableExtra::row_spec(8, hline_after = TRUE) %>%
+  kableExtra::row_spec(9, bold=T)
+```
+
+# Methods
+
+To determine if the overall composition of the news is negative, a combination of descriptive statistics and inference will be utilized. First, the news' corpus will be examined using the absolute frequency and DP's dispersion value. The absolute frequency will provide a fair comparison between the count of sentiment tokens and the DP's dispersion metric will calculate a fair dispersion metric. The dispersion metric will indicate if the sentiment words are clustered to certain news article are spread out. This is particularly helpful since it will provide evidence if the depressing parts of the news is consistent or targeted. 
+Next, the log-likehood or goodness of fit test to see if the difference between the negative tokens in the news corpus and the other texts is significant. The log ratio effect size metric will also be considered to compare the magnitude of the differences. 
+To capture the negative and positive words, two existing lists will be brought into the data. The tokens will then be filtered to the words contained in the positive and negative corpora. The corpora come from a very popular sentiment corpus in the QDAP dictionaries package. These lists were chosen for their concise coverage and accessibility.
+
+```{r, echo = FALSE}
+# Sentiment Lists from the qdap dictionaries package
+data(positive.words)
+data(negative.words)
+
+positive <- positive.words
+negative <- negative.words
+
+#head(positive)
+#head(negative)
+sentiment <- data.frame(c('Positive','Negative'),c(length(positive), length(negative)), 
+                        c(paste(head(positive), collapse=', ' ) , paste(head(negative), collapse=', ' )))
+colnames(sentiment) <- c('Sentiment List', 'Token Count', 'Sample Tokens')
+
+kableExtra::kbl(sentiment, caption = "Composition of the sentiment corpora.", booktabs = T, linesep = "") %>%
+  kableExtra::kable_styling(latex_options = "HOLD_position") %>%
+  kableExtra::kable_classic()
+```
+
+```{r, echo = FALSE, message = FALSE}
+# Keyness Calculations
+
+news_dfm <- dfm_subset(sc_dfm, text_type == "news")
+notnews_dfm <- dfm_subset(sc_dfm, text_type != "news") 
+
+news_kw <- keyness_table(news_dfm, notnews_dfm)
+```
+
+```{r, echo = FALSE}
+# Keyness of interest
+positive_news_kw <- news_kw %>% filter(Token %in% positive)
+negative_news_kw <- news_kw %>% filter(Token %in% negative)
+```
+
+```{r bin_width, echo = FALSE}
+bin_width <- function(x){
+  2 * IQR(x) / length(x)^(1/3)
+  }
+```
+
+```{r, echo = FALSE}
+# positive_hist <- data.frame(positive_news_kw$Token,positive_news_kw$AF_Tar)
+# colnames(positive_hist) <- c('Token','AF')
+# positive_hist <- positive_hist %>% filter(AF < 50)
+# 
+# positive_plot <- ggplot(positive_hist,aes(AF)) + 
+#   geom_histogram(binwidth = bin_width(positive_hist$AF), fill = 'light green', color = 'black') +
+#   geom_vline(aes(xintercept=mean(AF)), color="red", linetype="dashed") +
+#   theme_classic() +
+#   ggtitle('Positive Tokens')+
+#   theme(plot.title = element_text(hjust = 0.5))+
+#   xlab("RF for Positive Tokens")
+# 
+# positive_plot
+```
+
+
+```{r echo=FALSE}
+kableExtra::kbl(head(negative_news_kw), caption = "Negative tokens with the highest keyness values in the news text-type when compared to the other text-types.", booktabs = T, linesep = "", digits = 2) %>%
+  kableExtra::kable_styling(latex_options = "HOLD_position") %>%
+  kableExtra::kable_classic()
+```
+
+# Results
+
+The results should begin with descriptive analysis or EDA (exploratory data analysis) before moving on to other kinds of analysis/modeling. Be sure your visualizations are well-designed and properly captioned. Also, be sure to follow the appropriate conventions for reporting your statistical results as outlined in Brezina.
+
+# Discussion
+
+Discussion: What conclusions might you draw from your findings? Do they suggest interesting directions for further study? If your CBE didn’t work out the way you had hoped/expected, do you have any intuitions as to why? What are the limitations of your study and approach?
