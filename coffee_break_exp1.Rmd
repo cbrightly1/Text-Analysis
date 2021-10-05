@@ -1,20 +1,21 @@
 ---
 title: "Coffee Break Experiment 1"
 author: "Clare Cruz"
-date: "9/19/2021"
-output: pdf_document
+output:
+  pdf_document: default
+  word_document: default
 ---
 
 # Introduction
 
-When consuming today's news, it is rare to find an article that is not filled with dismal facts and unfortunate breaking news. But the natural question to this observation is to wonder if all news is depressing or if the popular stories are the only dismal ones. To begin to answer this, this small study will investigate the distribution of sentiment in the news by answering the following questions. The aim of these questions is to look at the sentiment both within the sample news texts and between other texts. 
+When consuming today's news, it is rare to find an article that is not filled with dismal facts and unfortunate breaking news. But, it is unclear if all news is depressing since very few people read all the news, especially across multiple news outlets. The goal of this study is to answer this curiosity by examining the content of today's news to see how much negative content there is and if the amount of negative content is higher compared to other types of texts. More specifically, this study aims to answer: 
 
 - Are there more negatively associated words than positive ones in sample news data? 
-- Do the negatively associated words come up more often in the news than in other texts? Is the difference meaningful?
+- Is the difference in the negatively associated words between the news and other texts meaningful?
 
 # Data
 
-The data come from a random sample from the Corpus of Contemporary American English. The sub-sample is balanced for text-type and year, with 400 texts total and 50 texts for each of the 8 text types. This sample is particularly helpful since it provides other text-types for the study to compare sentiment compositions against the news text. Tokens are defined as lower cased, non-numeric texts that are surrounded by spaces without punctuation. Common compound expressions are also considered as tokens. There are a total of 1,000,887 token in the sample corpus, with 119029 tokens in the news categories. 
+The news data come from a random sample of the Corpus of Contemporary American English. The sub-sample is balanced for text type and year, with 400 texts total and 50 texts for each of the 8 text types. Tokens are defined as lowercased, non-numeric texts that are surrounded by spaces without punctuation. Common compound expressions are also considered tokens. There is a total of 1,000,887 tokens in the sample corpus, with 119,029 tokens in the news category (Table 1). 
 
 ```{r setup, message = FALSE, error=FALSE, warning=FALSE, echo = FALSE}
 library(cmu.textstat)
@@ -22,6 +23,9 @@ library(tidyverse)
 library(quanteda)
 library(quanteda.textstats)
 library(qdapDictionaries)
+library(scales)
+library(ggplot2)
+library("ggpubr")
 ```
 
 ```{r data_prep, message = FALSE, error=FALSE, echo = FALSE}
@@ -80,11 +84,7 @@ kableExtra::kbl(corpus_comp, caption = "Composition of the sample corpus.", book
   kableExtra::row_spec(9, bold=T)
 ```
 
-# Methods
-
-To determine if the overall composition of the news is negative, a combination of descriptive statistics and inference will be utilized. First, the news' corpus will be examined using the absolute frequency and DP's dispersion value. The absolute frequency will provide a fair comparison between the count of sentiment tokens and the DP's dispersion metric will calculate a fair dispersion metric. The dispersion metric will indicate if the sentiment words are clustered to certain news article are spread out. This is particularly helpful since it will provide evidence if the depressing parts of the news is consistent or targeted. 
-Next, the log-likehood or goodness of fit test to see if the difference between the negative tokens in the news corpus and the other texts is significant. The log ratio effect size metric will also be considered to compare the magnitude of the differences. 
-To capture the negative and positive words, two existing lists will be brought into the data. The tokens will then be filtered to the words contained in the positive and negative corpora. The corpora come from a very popular sentiment corpus in the QDAP dictionaries package. These lists were chosen for their concise coverage and accessibility.
+Additionally, the two sentiment lists were collected from a very popular sentiment corpus in the QDAP dictionaries R package. The lists contain words and common phrases that were mined from reviews, forum discussions, and blogs to capture regular and comparative opinions. There are 2,003 positive words and 4,776 negative words included in the sentiment lists (Table 2). 
 
 ```{r, echo = FALSE}
 # Sentiment Lists from the qdap dictionaries package
@@ -96,18 +96,30 @@ negative <- negative.words
 
 #head(positive)
 #head(negative)
-sentiment <- data.frame(c('Positive','Negative'),c(length(positive), length(negative)), 
-                        c(paste(head(positive), collapse=', ' ) , paste(head(negative), collapse=', ' )))
-colnames(sentiment) <- c('Sentiment List', 'Token Count', 'Sample Tokens')
+```
 
-kableExtra::kbl(sentiment, caption = "Composition of the sentiment corpora.", booktabs = T, linesep = "") %>%
+```{r, echo = FALSE}
+sentiment <- data.frame(c('Positive','Negative'),
+                        c(length(positive), length(negative)), 
+                        c(paste(head(positive), collapse=', ' ) , paste(head(negative), collapse=', ' )))
+colnames(sentiment) <- c('Sentiment', 'List Size','Sample Tokens')
+
+kableExtra::kbl(sentiment, caption = "Composition of the sentiment lists.", booktabs = T, linesep = "") %>%
   kableExtra::kable_styling(latex_options = "HOLD_position") %>%
   kableExtra::kable_classic()
 ```
 
+# Methods
+
+To determine if the overall composition of the news is negative, a combination of descriptive statistics and statistical inference is utilized. First, the news' corpus is examined by calculating the absolute frequency and deviation of proportions (DP) dispersion value. The absolute frequency provides a fair comparison between the count of sentiment tokens within the news texts. Then, the DP's dispersion metric will be averaged to represent the overall distribution of sentiment words.
+
+Next, the log-likelihood or goodness of fit test is utilized to see if the difference between the negative tokens in the news corpus and the other texts is significant. The log-likelihood metric is the best metric to use in this situation since the size of the news corpus will differ from the corpus of the other texts. Specifically, the average log-likelihood value is calculated so that the difference for every negative token will be summarized.
+
+Lastly, two existing sentiment lists will be brought into the data to capture the negative and positive words. These lists were chosen for their concise coverage and accessibility to analyze the sentiment of the texts. 
+
+
 ```{r, echo = FALSE, message = FALSE}
 # Keyness Calculations
-
 news_dfm <- dfm_subset(sc_dfm, text_type == "news")
 notnews_dfm <- dfm_subset(sc_dfm, text_type != "news") 
 
@@ -118,7 +130,16 @@ news_kw <- keyness_table(news_dfm, notnews_dfm)
 # Keyness of interest
 positive_news_kw <- news_kw %>% filter(Token %in% positive)
 negative_news_kw <- news_kw %>% filter(Token %in% negative)
+
+# Since the keyness table includes words from target and reference texts, filter to just the target tokens
+negative_news <- negative_news_kw %>% filter(AF_Tar > 0)
+positive_news <- positive_news_kw %>% filter(AF_Tar > 0)
 ```
+
+
+# Results
+
+To start, descriptive statistics were used to compare the amount of positive and negative words within the news texts. In the news texts, the absolute frequency of the unique negative words is higher than the positive words, with 1,027 negative tokens and 669 positive tokens. Additionally, the overall frequency for the positive and negative words was low, with 89% and 83% of the negative and positive tokens occurring less than five times, respectively (Figure 1).
 
 ```{r bin_width, echo = FALSE}
 bin_width <- function(x){
@@ -126,33 +147,85 @@ bin_width <- function(x){
   }
 ```
 
-```{r, echo = FALSE}
-# positive_hist <- data.frame(positive_news_kw$Token,positive_news_kw$AF_Tar)
-# colnames(positive_hist) <- c('Token','AF')
-# positive_hist <- positive_hist %>% filter(AF < 50)
-# 
-# positive_plot <- ggplot(positive_hist,aes(AF)) + 
-#   geom_histogram(binwidth = bin_width(positive_hist$AF), fill = 'light green', color = 'black') +
-#   geom_vline(aes(xintercept=mean(AF)), color="red", linetype="dashed") +
-#   theme_classic() +
-#   ggtitle('Positive Tokens')+
-#   theme(plot.title = element_text(hjust = 0.5))+
-#   xlab("RF for Positive Tokens")
-# 
-# positive_plot
+```{r echo = FALSE, fig.height=2.5, fig.width=7, fig.cap="Histograms of the absolute frequency for the positive and negative tokens in the news data."}
+negative_hist <- ggplot(negative_news,aes(x = AF_Tar)) + 
+  geom_histogram(binwidth = bin_width(negative_news$AF_Tar), colour="black", fill="white",  size=.25) +
+  theme_classic() +
+  theme(axis.text = element_text(size=10)) +
+  ggtitle('Negative News Tokens')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ylab('Token Count')+
+  xlab("AF")
+
+positive_hist <- ggplot(positive_news,aes(x = AF_Tar)) + 
+  geom_histogram(binwidth = bin_width(positive_news$AF_Tar), colour="black", fill="white", size=.25) +
+  theme_classic() +
+  theme(axis.text = element_text(size=10)) +
+  ggtitle('Positive News Tokens')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ylab('Token Count')+
+  xlab("AF")
+
+ggarrange(negative_hist,positive_hist,ncol = 2)
 ```
 
+```{r, echo = FALSE}
+# sentiment <- data.frame(
+#   c(length(positive),dim(positive_news)[1],percent(round(dim(positive_news)[1]/length(positive),1))),
+#   c(length(negative), dim(negative_news)[1], percent(round(dim(negative_news)[1]/length(negative),1))),
+#   row.names = c('Sentiment List Size', 'Total Sentiment Tokens in Corpus', 'Proportion of Sentiment Tokens in Corpus'))
+# 
+# colnames(sentiment) <- c('Positive','Negative')
+# 
+# kableExtra::kbl(sentiment, caption = "Distribution of the sentiment lists in the news corpus.", booktabs = T, linesep = "") %>%
+#   kableExtra::kable_styling(latex_options = "HOLD_position") %>%
+#   kableExtra::kable_classic()
+```
+
+However, further analysis showed that the comparison between the positive and negative words is biased since many positive words are likely utilized without sentiment. For example, the positive token with the highest absolute frequency, ‘like’, has multiple functions and is likely to be unrelated to sentiment in most cases (Table 3).
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# Calculating the average LL and DP, map the lapply output since it returns a list
+agg_stats <- lapply(negative_news_kw, mean)
+agg_stats_avg <- map_df(agg_stats, ~as.data.frame(t(.)))
+agg_stats_trim <- agg_stats_avg[c(-1,-5,-6,-9,-10),]
+
+# Since DP has na's the mean is calculated separately
+agg_tar_dp <- mean(negative_news_kw$DP_Tar, na.rm = TRUE)
+agg_ref_dp <- mean(negative_news_kw$DP_Ref, na.rm = TRUE)
+
+agg_stats_full <- c(agg_stats_trim,agg_tar_dp, agg_ref_dp)
+agg_stats_df <- data.frame(agg_stats_full, row.names = c("Log Likelihood","Log Ratio","P-value","AF News","AF Other Texts","DP News","DP Other Texts"))
+colnames(agg_stats_df) <- c('Value')
+```
 
 ```{r echo=FALSE}
-kableExtra::kbl(head(negative_news_kw), caption = "Negative tokens with the highest keyness values in the news text-type when compared to the other text-types.", booktabs = T, linesep = "", digits = 2) %>%
+outliers <- positive_news %>% arrange(desc(AF_Tar)) %>% select(Token,AF_Tar)
+colnames(outliers) <- c('Positive Token','AF News')
+kableExtra::kbl(head(outliers), caption = "Positive tokens with the highest absolute frequency in the news texts.", booktabs = T, linesep = "", digits = 2) %>%
   kableExtra::kable_styling(latex_options = "HOLD_position") %>%
   kableExtra::kable_classic()
 ```
 
-# Results
+Next, the average log-likelihood was used to determine if there was a meaningful difference in the frequency of negative tokens between the news texts and other texts. The average log-likelihood for the negative tokens is -0.15 with an average p-value of 0.41 (Table 4). This result indicates that while the negative tokens occur more often in the other texts than in the news texts, the difference is not significant. Additionally, the average DP dispersion metric for the news texts is close to 1 which means that the negative tokens are not dispersed or consistent in the texts.
 
-The results should begin with descriptive analysis or EDA (exploratory data analysis) before moving on to other kinds of analysis/modeling. Be sure your visualizations are well-designed and properly captioned. Also, be sure to follow the appropriate conventions for reporting your statistical results as outlined in Brezina.
+```{r echo=FALSE}
+kableExtra::kbl(agg_stats_df, caption = "Aggregate statistics for the negative tokens in the news text-type when compared to the other text-types.", booktabs = T, linesep = "", digits = 2) %>%
+  kableExtra::kable_styling(latex_options = "HOLD_position") %>%
+  kableExtra::kable_classic()
+```
 
 # Discussion
 
-Discussion: What conclusions might you draw from your findings? Do they suggest interesting directions for further study? If your CBE didn’t work out the way you had hoped/expected, do you have any intuitions as to why? What are the limitations of your study and approach?
+The descriptive analysis showed that there are more negatively associated words than positive ones in the news texts. Then, the inferential statistics proved that there is no meaningful difference in the frequency of negative words between news texts and other text types. While the first result aligns with the initial intuition behind the research question, the second result proved to be a surprise. Perhaps the content of the news is inherently depressing but when it comes to the reporting it remains objective. This hypothesis aligns with the results since negative objects like 'death' were frequent while adjectives like 'depressing' did not occur. 
+
+Since this study is a casual experimentation, there are many limitations for sake of curiosity. First, the news data in this sample is small compared to other corpora. Also, the result of the study is heavily dependent upon the sentiment lists, so another more robust list would likely produce a different result. Next, the context of the tokens and their sentiment was not considered due to the scope of the project. This limitation caused some words to be misinterpreted, so the comparison between positive and negative words is likely inaccurate. Lastly, it is unclear if aggregating the log-likelihood and p-value is a valid method. In most situations, these metrics are evaluated on a row-by-row basis. But for the context of this study, an aggregation was necessary to summarize all negative tokens.
+
+
+
+# Code Appendix
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+
